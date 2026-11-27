@@ -2,7 +2,8 @@ use std::process::Command;
 
 use serde::Serialize;
 
-use crate::state::{RunnerRecord, RunnerScope};
+use crate::providers;
+use crate::state::{ProviderKind, RunnerRecord, RunnerScope};
 use crate::system::systemd;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -32,6 +33,7 @@ impl std::fmt::Display for JobState {
 #[derive(Debug, Clone, Serialize)]
 pub struct RunnerLiveStatus {
     pub name: String,
+    pub provider: ProviderKind,
     pub url: String,
     pub scope: RunnerScope,
     pub linux_user: String,
@@ -60,11 +62,12 @@ pub fn collect_runner_status(record: &RunnerRecord) -> RunnerLiveStatus {
         JobState::Offline
     } else {
         let recent_logs = systemd::read_recent_logs(&record.service_name, 30);
-        infer_job_state_from_logs(&recent_logs)
+        providers::infer_job_state(record.provider, &recent_logs)
     };
 
     RunnerLiveStatus {
         name: record.name.clone(),
+        provider: record.provider,
         url: record.url.clone(),
         scope: record.scope.clone(),
         linux_user: record.linux_user.clone(),
@@ -82,8 +85,8 @@ pub fn collect_runner_status(record: &RunnerRecord) -> RunnerLiveStatus {
     }
 }
 
-/// Infer whether the GitHub Actions runner is idle, busy, or encountering connect errors.
-pub fn infer_job_state_from_logs(lines: &[String]) -> JobState {
+/// Infer whether a GitHub Actions runner is idle, busy, or encountering connect errors.
+pub fn infer_github_job_state(lines: &[String]) -> JobState {
     for line in lines.iter().rev() {
         if line.contains("A session for this runner already exists") {
             return JobState::Error("Session conflict".into());
@@ -182,7 +185,7 @@ mod tests {
             "2026-11-26T10:01:00Z host run.sh: Running job: build-and-test".to_string(),
         ];
         assert_eq!(
-            infer_job_state_from_logs(&running),
+            infer_github_job_state(&running),
             JobState::Running("build-and-test".into())
         );
 
@@ -191,7 +194,7 @@ mod tests {
             "2026-11-26T10:03:00Z host run.sh: Job build-and-test completed with result: Succeeded"
                 .to_string(),
         ];
-        assert_eq!(infer_job_state_from_logs(&idle), JobState::Idle);
+        assert_eq!(infer_github_job_state(&idle), JobState::Idle);
     }
 
     #[test]

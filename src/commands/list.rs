@@ -26,10 +26,10 @@ pub fn run(args: ListArgs) -> Result<()> {
     }
 
     println!(
-        "{:<18} {:<10} {:<22} {:<12} {:<8} {:<7} {:<10} {:<10} TARGET",
-        "NAME", "SERVICE", "JOB", "USER", "VERSION", "CPU%", "MEM", "UPTIME"
+        "{:<16} {:<9} {:<10} {:<20} {:<10} {:<8} {:<7} {:<10} {:<9} TARGET",
+        "NAME", "PROVIDER", "SERVICE", "JOB", "USER", "VERSION", "CPU%", "MEM", "UPTIME"
     );
-    println!("{}", "-".repeat(120));
+    println!("{}", "-".repeat(126));
 
     for st in statuses {
         let cpu = st
@@ -38,13 +38,14 @@ pub fn run(args: ListArgs) -> Result<()> {
             .unwrap_or_else(|| "-".into());
         let mem = metrics::format_bytes(st.memory_bytes);
         let uptime = metrics::format_uptime(st.uptime_secs);
-        let job = truncate(&st.job_state.to_string(), 22);
+        let job = truncate(&st.job_state.to_string(), 20);
         println!(
-            "{:<18} {:<10} {:<22} {:<12} {:<8} {:<7} {:<10} {:<10} {}",
-            truncate(&st.name, 18),
+            "{:<16} {:<9} {:<10} {:<20} {:<10} {:<8} {:<7} {:<10} {:<9} {}",
+            truncate(&st.name, 16),
+            st.provider,
             truncate(&st.active_state, 10),
             job,
-            truncate(&st.linux_user, 12),
+            truncate(&st.linux_user, 10),
             truncate(&st.runner_version, 8),
             cpu,
             mem,

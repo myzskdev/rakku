@@ -1,8 +1,8 @@
 [package]
 name = "rakku"
-version = "0.1.4"
+version = "0.2.0"
 edition = "2021"
-description = "Effortless Linux setup, lifecycle management, and local monitoring for GitHub Actions self-hosted runners (by fukulabs.dev)"
+description = "Effortless Linux setup, lifecycle management, and local monitoring for self-hosted CI runners: GitHub Actions, GitLab Runner, and Gitea Actions (by fukulabs.dev)"
 homepage = "https://fukulabs.dev"
 repository = "https://github.com/myzskdev/rakku"
 license = "MIT"

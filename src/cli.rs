@@ -1,7 +1,24 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use crate::config::{APP_NAME, DEFAULT_INSTALL_ROOT, DEFAULT_RUNNER_USER};
-use crate::state::ContainerRuntime;
+use crate::state::{ContainerRuntime, ProviderKind};
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum ProviderArg {
+    Github,
+    Gitlab,
+    Gitea,
+}
+
+impl From<ProviderArg> for ProviderKind {
+    fn from(value: ProviderArg) -> Self {
+        match value {
+            ProviderArg::Github => ProviderKind::Github,
+            ProviderArg::Gitlab => ProviderKind::Gitlab,
+            ProviderArg::Gitea => ProviderKind::Gitea,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum RuntimeArg {
@@ -24,7 +41,7 @@ impl From<RuntimeArg> for ContainerRuntime {
 #[command(
     name = APP_NAME,
     version,
-    about = "Automated Linux setup, lifecycle management, and local monitoring for GitHub Actions self-hosted runners"
+    about = "Effortless Linux setup, lifecycle management, and local monitoring for self-hosted CI runners (GitHub Actions, GitLab Runner, Gitea Actions)"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -33,7 +50,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Install, register, and start a new GitHub Actions self-hosted runner
+    /// Install, register, and start a new self-hosted CI runner
     #[command(aliases = ["init", "setup", "add"])]
     Install(InstallArgs),
 
@@ -65,7 +82,7 @@ pub enum Commands {
     #[command(alias = "self-update")]
     Update(SelfUpdateArgs),
 
-    /// Upgrade one or all managed runners to the latest actions/runner release
+    /// Upgrade one or all managed runners to the latest upstream runner release
     Upgrade(UpdateArgs),
 
     /// Check host readiness (systemd, Linux tools, git, docker, GitHub API)
@@ -74,18 +91,29 @@ pub enum Commands {
 
 #[derive(Debug, Args)]
 pub struct InstallArgs {
-    /// GitHub repository, organization, or enterprise URL
-    /// (e.g. https://github.com/owner/repo or https://github.com/my-org)
+    /// CI runner provider (github, gitlab, or gitea)
+    #[arg(long, value_enum)]
+    pub provider: Option<ProviderArg>,
+
+    /// Target URL (GitHub: owner/repo or URL; GitLab: https://gitlab.com; Gitea: https://gitea.example.com)
     #[arg(long)]
     pub url: Option<String>,
 
-    /// GitHub Personal Access Token (recommended: auto-mints registration & removal tokens)
+    /// GitHub Personal Access Token (GitHub only: auto-mints registration & removal tokens)
     #[arg(long, env = "GITHUB_PAT")]
     pub pat: Option<String>,
 
-    /// Manual 1-hour runner registration token from GitHub Settings
-    #[arg(long, env = "GITHUB_RUNNER_TOKEN")]
+    /// Runner registration/authentication token (GitHub 1h token, GitLab glrt-*/registration token, or Gitea runner token)
+    #[arg(long, env = "RUNNER_TOKEN")]
     pub token: Option<String>,
+
+    /// GitLab Runner executor (shell or docker; defaults to docker when --runtime docker, else shell)
+    #[arg(long)]
+    pub executor: Option<String>,
+
+    /// Default Docker image for GitLab docker executor (default: alpine:latest)
+    #[arg(long, default_value = "alpine:latest")]
+    pub docker_image: String,
 
     /// Name for this runner (defaults to hostname or interactive prompt)
     #[arg(long)]

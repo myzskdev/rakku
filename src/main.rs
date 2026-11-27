@@ -2,6 +2,7 @@ mod cli;
 mod commands;
 mod config;
 mod github;
+mod providers;
 mod state;
 mod system;
 

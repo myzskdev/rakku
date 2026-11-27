@@ -5,7 +5,8 @@ use dialoguer::{Confirm, Password};
 
 use crate::cli::RemoveArgs;
 use crate::github::{GitHubClient, GitHubTarget};
-use crate::state::StateStore;
+use crate::providers::gitlab;
+use crate::state::{ProviderKind, RunnerRecord, StateStore};
 use crate::system::{self, systemd};
 
 pub fn run(args: RemoveArgs) -> Result<()> {
@@ -20,8 +21,8 @@ pub fn run(args: RemoveArgs) -> Result<()> {
     if !args.yes {
         let confirmed = Confirm::new()
             .with_prompt(format!(
-                "Stop, deregister, and delete runner `{}` ({})?",
-                rec.name, rec.url
+                "Stop, deregister, and delete {} runner `{}` ({})?",
+                rec.provider, rec.name, rec.url
             ))
             .default(false)
             .interact()?;
@@ -37,13 +38,16 @@ pub fn run(args: RemoveArgs) -> Result<()> {
     );
     systemd::remove_unit(&rec.name, &rec.service_name)?;
 
-    println!("[2/4] Deregistering runner `{}` from GitHub...", rec.name);
+    println!(
+        "[2/4] Deregistering {} runner `{}`...",
+        rec.provider, rec.name
+    );
     let deregister_res =
         deregister_runner(&rec, args.pat.as_deref(), args.token.as_deref(), args.force);
     if let Err(err) = deregister_res {
         if args.force {
             eprintln!(
-                "warning: GitHub deregistration skipped/failed ({err}); continuing due to --force"
+                "warning: remote deregistration skipped/failed ({err}); continuing due to --force"
             );
         } else {
             return Err(err);
@@ -67,7 +71,26 @@ pub fn run(args: RemoveArgs) -> Result<()> {
 }
 
 fn deregister_runner(
-    rec: &crate::state::RunnerRecord,
+    rec: &RunnerRecord,
+    pat: Option<&str>,
+    manual_token: Option<&str>,
+    force: bool,
+) -> Result<()> {
+    match rec.provider {
+        ProviderKind::Github => deregister_github(rec, pat, manual_token, force),
+        ProviderKind::Gitlab => gitlab::deregister(rec),
+        ProviderKind::Gitea => {
+            println!(
+                "      Note: Gitea act_runner has no CLI unregister command; remove `{}` from Gitea Settings -> Actions -> Runners if still listed.",
+                rec.name
+            );
+            Ok(())
+        }
+    }
+}
+
+fn deregister_github(
+    rec: &RunnerRecord,
     pat: Option<&str>,
     manual_token: Option<&str>,
     force: bool,
@@ -86,7 +109,6 @@ fn deregister_runner(
         if tok.trim().is_empty() {
             bail!("empty token provided");
         }
-        // Heuristic: PATs start with ghp_ or github_pat_; otherwise treat as manual removal token.
         if tok.starts_with("ghp_") || tok.starts_with("github_pat_") {
             let target = GitHubTarget::parse(&rec.url)?;
             GitHubClient::new().create_remove_token(&target, &tok)?

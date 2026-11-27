@@ -7,12 +7,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::config;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ProviderKind {
+    #[default]
+    Github,
+    Gitlab,
+    Gitea,
+}
+
+impl std::fmt::Display for ProviderKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProviderKind::Github => write!(f, "github"),
+            ProviderKind::Gitlab => write!(f, "gitlab"),
+            ProviderKind::Gitea => write!(f, "gitea"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum RunnerScope {
     Repo,
     Org,
     Enterprise,
+    Instance,
 }
 
 impl std::fmt::Display for RunnerScope {
@@ -21,6 +41,7 @@ impl std::fmt::Display for RunnerScope {
             RunnerScope::Repo => write!(f, "repo"),
             RunnerScope::Org => write!(f, "org"),
             RunnerScope::Enterprise => write!(f, "enterprise"),
+            RunnerScope::Instance => write!(f, "instance"),
         }
     }
 }
@@ -47,6 +68,8 @@ impl std::fmt::Display for ContainerRuntime {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunnerRecord {
     pub name: String,
+    #[serde(default)]
+    pub provider: ProviderKind,
     pub url: String,
     pub scope: RunnerScope,
     pub labels: Vec<String>,
@@ -145,6 +168,7 @@ mod tests {
     fn sample_record(name: &str) -> RunnerRecord {
         RunnerRecord {
             name: name.to_string(),
+            provider: ProviderKind::Github,
             url: "https://github.com/acme/demo".to_string(),
             scope: RunnerScope::Repo,
             labels: vec!["linux".into(), "vps".into()],
@@ -193,5 +217,35 @@ mod tests {
         let removed = store.remove("r1");
         assert!(removed.is_some());
         assert!(store.runners.is_empty());
+    }
+
+    #[test]
+    fn loads_legacy_v01_state_without_provider_or_runtime() {
+        let legacy_json = r#"{
+          "schema_version": 1,
+          "runners": [
+            {
+              "name": "voucher-gen",
+              "url": "https://github.com/myzskdev/voucher",
+              "scope": "repo",
+              "labels": ["vps"],
+              "runner_group": null,
+              "linux_user": "rakku",
+              "docker_access": false,
+              "sudo_access": false,
+              "install_dir": "/opt/rakku/runners/voucher-gen",
+              "service_name": "rakku-voucher-gen.service",
+              "runner_version": "2.323.0",
+              "ephemeral": false,
+              "installed_at": "2026-11-26T15:00:00Z",
+              "updated_at": null
+            }
+          ]
+        }"#;
+
+        let store: StateStore = serde_json::from_str(legacy_json).unwrap();
+        assert_eq!(store.runners.len(), 1);
+        assert_eq!(store.runners[0].provider, ProviderKind::Github);
+        assert_eq!(store.runners[0].container_runtime, ContainerRuntime::None);
     }
 }

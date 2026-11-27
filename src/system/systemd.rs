@@ -18,15 +18,14 @@ pub struct ServiceStatus {
     pub uptime_secs: Option<u64>,
 }
 
-/// Generate a systemd unit file for a managed GitHub Actions runner.
+/// Generate a systemd unit file for a managed CI runner (GitHub, GitLab, or Gitea).
 pub fn render_unit_file(record: &RunnerRecord) -> String {
     let workdir = record.install_dir.to_string_lossy();
-    let listener = record.install_dir.join("bin").join("Runner.Listener");
-    let listener_str = listener.to_string_lossy();
+    let exec_start = crate::providers::exec_start_command(record);
 
     format!(
         "[Unit]\n\
-Description=GitHub Actions Runner ({name}) [managed by {app}]\n\
+Description=CI Runner ({name} / {provider}) [managed by {app}]\n\
 After=network-online.target\n\
 Wants=network-online.target\n\
 \n\
@@ -34,7 +33,7 @@ Wants=network-online.target\n\
 Type=simple\n\
 User={user}\n\
 WorkingDirectory={workdir}\n\
-ExecStart={listener_str} run --startuptype service\n\
+ExecStart={exec_start}\n\
 Restart=always\n\
 RestartSec=5\n\
 KillMode=control-group\n\
@@ -45,6 +44,7 @@ Environment=HOME=/home/{user}\n\
 [Install]\n\
 WantedBy=multi-user.target\n",
         name = record.name,
+        provider = record.provider,
         app = config::APP_NAME,
         user = record.linux_user,
     )
@@ -233,6 +233,7 @@ mod tests {
     fn renders_valid_systemd_unit() {
         let rec = RunnerRecord {
             name: "vps-01".into(),
+            provider: crate::state::ProviderKind::Github,
             url: "https://github.com/acme/api".into(),
             scope: RunnerScope::Repo,
             labels: vec!["vps".into()],

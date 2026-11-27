@@ -13,7 +13,7 @@ pub fn run(args: RunnerTargetArgs) -> Result<()> {
     let live = metrics::collect_runner_status(rec);
     let logs = systemd::read_recent_logs(&rec.service_name, 15);
 
-    println!("Runner:        {}", rec.name);
+    println!("Runner:        {} ({})", rec.name, rec.provider);
     println!("Target URL:    {} ({})", rec.url, rec.scope);
     println!(
         "Service:       {} ({} / {})",

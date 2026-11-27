@@ -8,7 +8,8 @@ use dialoguer::{Confirm, Input, Password, Select};
 use crate::cli::InstallArgs;
 use crate::config::{self, APP_NAME};
 use crate::github::{current_runner_arch, GitHubClient, GitHubTarget};
-use crate::state::{ContainerRuntime, RunnerRecord, StateStore};
+use crate::providers::{gitea, gitlab};
+use crate::state::{ContainerRuntime, ProviderKind, RunnerRecord, RunnerScope, StateStore};
 use crate::system::{self, preflight, systemd, user};
 
 /// Automatically cleans up partial runner files and systemd units if installation fails mid-way.
@@ -82,17 +83,29 @@ pub fn run(args: InstallArgs) -> Result<()> {
         println!("{APP_NAME} setup wizard — press Enter to accept defaults.\n");
     }
 
-    let raw_url = match args.url {
-        Some(u) => u,
-        None if args.non_interactive => {
-            bail!("--url is required when running with --non-interactive")
+    let provider: ProviderKind = if let Some(p) = args.provider {
+        p.into()
+    } else if interactive {
+        let choices = &[
+            "GitHub Actions (github.com)",
+            "GitLab Runner  (gitlab.com or self-hosted GitLab)",
+            "Gitea Actions  (self-hosted Gitea / act_runner)",
+        ];
+        match Select::new()
+            .with_prompt("CI Runner provider")
+            .items(choices)
+            .default(0)
+            .interact()?
+        {
+            1 => ProviderKind::Gitlab,
+            2 => ProviderKind::Gitea,
+            _ => ProviderKind::Github,
         }
-        None => Input::<String>::new()
-            .with_prompt("GitHub repo or org (e.g. owner/repo or https://github.com/my-org)")
-            .interact_text()?,
+    } else {
+        ProviderKind::Github
     };
-    let target = GitHubTarget::parse(&raw_url)?;
-    let url = target.canonical_url();
+
+    let (url, scope, gh_target) = resolve_target(provider, args.url, args.non_interactive)?;
 
     let default_name = suggest_runner_name(&store);
     let name = match args.name {
@@ -108,12 +121,12 @@ pub fn run(args: InstallArgs) -> Result<()> {
         bail!("a runner named `{name}` is already managed locally; pass --replace to overwrite it");
     }
 
-    let (pat, manual_token) = resolve_auth(args.pat, args.token, args.non_interactive)?;
+    let (pat, token) = resolve_auth(provider, args.pat, args.token, args.non_interactive)?;
 
     let labels_raw = match args.labels {
         Some(l) => l,
         None if interactive => Input::<String>::new()
-            .with_prompt("Custom labels (comma-separated, optional)")
+            .with_prompt("Custom labels/tags (comma-separated, optional)")
             .allow_empty(true)
             .interact_text()?,
         None => String::new(),
@@ -178,17 +191,7 @@ pub fn run(args: InstallArgs) -> Result<()> {
     let service_name = config::systemd_service_name(&name);
     let dir_existed_before = install_dir.exists();
 
-    let gh = GitHubClient::new();
-    let reg_token = match (pat.as_deref(), manual_token) {
-        (_, Some(tok)) => tok,
-        (Some(p), None) => {
-            println!("[1/7] Requesting GitHub runner registration token via API...");
-            gh.create_registration_token(&target, p)?
-        }
-        (None, None) => unreachable!("auth resolution guarantees either PAT or manual token"),
-    };
-
-    println!("[2/7] Ensuring Linux user `{linux_user}` and permissions (runtime: {runtime})...");
+    println!("[1/6] Ensuring Linux user `{linux_user}` and permissions (runtime: {runtime})...");
     user::ensure_linux_user(&linux_user, runtime, sudo_access)?;
 
     let mut guard = RollbackGuard::new();
@@ -196,67 +199,110 @@ pub fn run(args: InstallArgs) -> Result<()> {
         guard.track_dir(install_dir.clone());
     }
 
-    let arch = current_runner_arch()?;
-    println!("[3/7] Resolving actions/runner release for linux-{arch}...");
-    let release = gh.fetch_runner_release(args.runner_version.as_deref(), arch, pat.as_deref())?;
-    println!(
-        "      Downloading {} (v{})...",
-        release.asset_name, release.version
-    );
-    gh.download_and_extract(&release, &install_dir)?;
+    let installed_version = match provider {
+        ProviderKind::Github => {
+            let target = gh_target.expect("GitHub target must be parsed");
+            let gh = GitHubClient::new();
+            let reg_token = match (pat.as_deref(), token) {
+                (_, Some(tok)) => tok,
+                (Some(p), None) => {
+                    println!("[2/6] Requesting GitHub runner registration token via API...");
+                    gh.create_registration_token(&target, p)?
+                }
+                (None, None) => unreachable!("auth resolution guarantees token or PAT"),
+            };
 
-    if !args.skip_deps {
-        let deps_script = install_dir.join("bin").join("installdependencies.sh");
-        if deps_script.exists() {
-            println!("[4/7] Installing runner OS dependencies via bin/installdependencies.sh...");
-            let script_str = deps_script
+            let arch = current_runner_arch()?;
+            println!("[3/6] Downloading actions/runner for linux-{arch}...");
+            let release =
+                gh.fetch_runner_release(args.runner_version.as_deref(), arch, pat.as_deref())?;
+            println!("      {} (v{})", release.asset_name, release.version);
+            gh.download_and_extract(&release, &install_dir)?;
+
+            if !args.skip_deps {
+                let deps_script = install_dir.join("bin").join("installdependencies.sh");
+                if deps_script.exists() {
+                    println!("      Installing OS dependencies via bin/installdependencies.sh...");
+                    let script_str = deps_script
+                        .to_str()
+                        .ok_or_else(|| anyhow!("dependency script path contains invalid UTF-8"))?;
+                    system::run_checked("bash", &[script_str])?;
+                }
+            }
+
+            user::chown_recursive(&install_dir, &linux_user)?;
+
+            println!("[4/6] Registering GitHub Actions runner `{name}`...");
+            let mut cfg_args = vec![
+                "--unattended".to_string(),
+                "--url".to_string(),
+                url.clone(),
+                "--token".to_string(),
+                reg_token,
+                "--name".to_string(),
+                name.clone(),
+            ];
+            if !labels.is_empty() {
+                cfg_args.push("--labels".to_string());
+                cfg_args.push(labels.join(","));
+            }
+            if let Some(group) = &args.runner_group {
+                cfg_args.push("--runnergroup".to_string());
+                cfg_args.push(group.clone());
+            }
+            if args.replace {
+                cfg_args.push("--replace".to_string());
+            }
+            if args.ephemeral {
+                cfg_args.push("--ephemeral".to_string());
+            }
+
+            let config_script = install_dir.join("config.sh");
+            let config_script_str = config_script
                 .to_str()
-                .ok_or_else(|| anyhow!("dependency script path contains invalid UTF-8"))?;
-            system::run_checked("bash", &[script_str])?;
-        } else {
-            println!("[4/7] Skipping OS dependencies (bin/installdependencies.sh not present).");
+                .ok_or_else(|| anyhow!("install path contains invalid UTF-8"))?;
+            system::run_as_user(&linux_user, &install_dir, config_script_str, &cfg_args)?;
+            release.version
         }
-    } else {
-        println!("[4/7] Skipping OS dependencies (--skip-deps).");
-    }
+        ProviderKind::Gitlab => {
+            let gl_token = token.ok_or_else(|| anyhow!("GitLab runner token is required"))?;
+            println!("[2/6] Skipping API token exchange (using GitLab runner token directly)...");
+            println!("[3/6] Downloading GitLab Runner binary...");
+            let version = gitlab::download_binary(args.runner_version.as_deref(), &install_dir)?;
+            user::chown_recursive(&install_dir, &linux_user)?;
 
-    user::chown_recursive(&install_dir, &linux_user)?;
+            println!("[4/6] Registering GitLab Runner `{name}` with {url}...");
+            gitlab::register(
+                &linux_user,
+                &install_dir,
+                &url,
+                &gl_token,
+                &name,
+                &labels,
+                runtime,
+                args.executor.as_deref(),
+                &args.docker_image,
+            )?;
+            version
+        }
+        ProviderKind::Gitea => {
+            let gt_token = token.ok_or_else(|| anyhow!("Gitea runner token is required"))?;
+            println!("[2/6] Skipping API token exchange (using Gitea runner token directly)...");
+            println!("[3/6] Downloading Gitea act_runner binary...");
+            let version = gitea::download_binary(args.runner_version.as_deref(), &install_dir)?;
+            user::chown_recursive(&install_dir, &linux_user)?;
 
-    println!("[5/7] Registering runner `{name}` with GitHub...");
-    let mut cfg_args = vec![
-        "--unattended".to_string(),
-        "--url".to_string(),
-        url.clone(),
-        "--token".to_string(),
-        reg_token,
-        "--name".to_string(),
-        name.clone(),
-    ];
-    if !labels.is_empty() {
-        cfg_args.push("--labels".to_string());
-        cfg_args.push(labels.join(","));
-    }
-    if let Some(group) = &args.runner_group {
-        cfg_args.push("--runnergroup".to_string());
-        cfg_args.push(group.clone());
-    }
-    if args.replace {
-        cfg_args.push("--replace".to_string());
-    }
-    if args.ephemeral {
-        cfg_args.push("--ephemeral".to_string());
-    }
-
-    let config_script = install_dir.join("config.sh");
-    let config_script_str = config_script
-        .to_str()
-        .ok_or_else(|| anyhow!("install path contains invalid UTF-8"))?;
-    system::run_as_user(&linux_user, &install_dir, config_script_str, &cfg_args)?;
+            println!("[4/6] Registering Gitea act_runner `{name}` with {url}...");
+            gitea::register(&linux_user, &install_dir, &url, &gt_token, &name, &labels)?;
+            version
+        }
+    };
 
     let record = RunnerRecord {
         name: name.clone(),
+        provider,
         url: url.clone(),
-        scope: target.scope(),
+        scope,
         labels,
         runner_group: args.runner_group,
         linux_user: linux_user.clone(),
@@ -265,25 +311,25 @@ pub fn run(args: InstallArgs) -> Result<()> {
         sudo_access,
         install_dir: install_dir.clone(),
         service_name: service_name.clone(),
-        runner_version: release.version.clone(),
+        runner_version: installed_version,
         ephemeral: args.ephemeral,
         installed_at: Utc::now(),
         updated_at: None,
     };
 
-    println!("[6/7] Installing and starting systemd service `{service_name}`...");
+    println!("[5/6] Installing and starting systemd service `{service_name}`...");
     guard.track_unit(name.clone(), service_name.clone());
     systemd::install_and_enable_unit(&record)?;
 
-    println!("[7/7] Saving runner metadata to local state...");
+    println!("[6/6] Saving runner metadata to local state...");
     store.upsert(record);
     store.save_default()?;
 
     guard.disarm();
 
-    println!("\nRunner `{name}` is installed and running!");
+    println!("\nRunner `{name}` ({provider}) is installed and running!");
     println!("  Target:    {url}");
-    println!("  User:      {linux_user}");
+    println!("  User:      {linux_user} (runtime: {runtime})");
     println!("  Directory: {}", install_dir.display());
     println!("  Service:   {service_name}");
     println!("\nUseful commands:");
@@ -291,6 +337,63 @@ pub fn run(args: InstallArgs) -> Result<()> {
     println!("  {APP_NAME} status {name}");
     println!("  {APP_NAME} logs {name} -f");
     Ok(())
+}
+
+fn resolve_target(
+    provider: ProviderKind,
+    raw_url: Option<String>,
+    non_interactive: bool,
+) -> Result<(String, RunnerScope, Option<GitHubTarget>)> {
+    match provider {
+        ProviderKind::Github => {
+            let input = match raw_url {
+                Some(u) => u,
+                None if non_interactive => {
+                    bail!("--url is required when running with --non-interactive")
+                }
+                None => Input::<String>::new()
+                    .with_prompt(
+                        "GitHub repo or org (e.g. owner/repo or https://github.com/my-org)",
+                    )
+                    .interact_text()?,
+            };
+            let target = GitHubTarget::parse(&input)?;
+            let canonical = target.canonical_url();
+            let scope = target.scope();
+            Ok((canonical, scope, Some(target)))
+        }
+        ProviderKind::Gitlab => {
+            let input = match raw_url {
+                Some(u) => u,
+                None if non_interactive => "https://gitlab.com".to_string(),
+                None => Input::<String>::new()
+                    .with_prompt("GitLab instance URL")
+                    .default("https://gitlab.com".to_string())
+                    .interact_text()?,
+            };
+            let trimmed = input.trim().trim_end_matches('/').to_string();
+            if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+                bail!("GitLab URL must start with https:// or http:// (got: {trimmed})");
+            }
+            Ok((trimmed, RunnerScope::Instance, None))
+        }
+        ProviderKind::Gitea => {
+            let input = match raw_url {
+                Some(u) => u,
+                None if non_interactive => {
+                    bail!("--url (Gitea instance URL) is required when running with --non-interactive")
+                }
+                None => Input::<String>::new()
+                    .with_prompt("Gitea instance URL (e.g. https://gitea.example.com)")
+                    .interact_text()?,
+            };
+            let trimmed = input.trim().trim_end_matches('/').to_string();
+            if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+                bail!("Gitea URL must start with https:// or http:// (got: {trimmed})");
+            }
+            Ok((trimmed, RunnerScope::Instance, None))
+        }
+    }
 }
 
 fn ensure_prerequisites(
@@ -304,7 +407,7 @@ fn ensure_prerequisites(
             true
         } else if allow_prompt {
             Confirm::new()
-                .with_prompt("`git` is not installed (needed by actions/checkout). Install it now?")
+                .with_prompt("`git` is not installed (needed by CI checkouts). Install it now?")
                 .default(true)
                 .interact()?
         } else {
@@ -377,43 +480,80 @@ fn ensure_prerequisites(
 }
 
 fn resolve_auth(
+    provider: ProviderKind,
     pat: Option<String>,
     token: Option<String>,
     non_interactive: bool,
 ) -> Result<(Option<String>, Option<String>)> {
-    if pat.is_some() || token.is_some() {
-        return Ok((pat, token));
-    }
-    if non_interactive {
-        bail!("either --pat (or GITHUB_PAT) or --token (or GITHUB_RUNNER_TOKEN) is required in --non-interactive mode");
-    }
+    match provider {
+        ProviderKind::Github => {
+            if pat.is_some() || token.is_some() {
+                return Ok((pat, token));
+            }
+            if non_interactive {
+                bail!("either --pat (or GITHUB_PAT) or --token (or RUNNER_TOKEN) is required in --non-interactive mode");
+            }
 
-    let choices = &[
-        "GitHub PAT (recommended: auto-mints registration & removal tokens)",
-        "Manual 1-hour registration token (from GitHub Settings -> Actions -> Runners)",
-    ];
-    let selection = Select::new()
-        .with_prompt("Authentication method")
-        .items(choices)
-        .default(0)
-        .interact()?;
+            let choices = &[
+                "GitHub PAT (recommended: auto-mints registration & removal tokens)",
+                "Manual 1-hour registration token (from GitHub Settings -> Actions -> Runners)",
+            ];
+            let selection = Select::new()
+                .with_prompt("Authentication method")
+                .items(choices)
+                .default(0)
+                .interact()?;
 
-    if selection == 0 {
-        let p = Password::new()
-            .with_prompt("GitHub Personal Access Token (PAT)")
-            .interact()?;
-        if p.trim().is_empty() {
-            bail!("PAT cannot be empty");
+            if selection == 0 {
+                let p = Password::new()
+                    .with_prompt("GitHub Personal Access Token (PAT)")
+                    .interact()?;
+                if p.trim().is_empty() {
+                    bail!("PAT cannot be empty");
+                }
+                Ok((Some(p), None))
+            } else {
+                let t = Password::new()
+                    .with_prompt("GitHub Runner Registration Token")
+                    .interact()?;
+                if t.trim().is_empty() {
+                    bail!("registration token cannot be empty");
+                }
+                Ok((None, Some(t)))
+            }
         }
-        Ok((Some(p), None))
-    } else {
-        let t = Password::new()
-            .with_prompt("GitHub Runner Registration Token")
-            .interact()?;
-        if t.trim().is_empty() {
-            bail!("registration token cannot be empty");
+        ProviderKind::Gitlab => {
+            if let Some(t) = token {
+                return Ok((None, Some(t)));
+            }
+            if non_interactive {
+                bail!("--token (or RUNNER_TOKEN) is required for GitLab Runner in --non-interactive mode");
+            }
+            let t = Password::new()
+                .with_prompt("GitLab Runner Token (glrt-... or registration token from CI/CD Settings -> Runners)")
+                .interact()?;
+            if t.trim().is_empty() {
+                bail!("GitLab runner token cannot be empty");
+            }
+            Ok((None, Some(t)))
         }
-        Ok((None, Some(t)))
+        ProviderKind::Gitea => {
+            if let Some(t) = token {
+                return Ok((None, Some(t)));
+            }
+            if non_interactive {
+                bail!("--token (or RUNNER_TOKEN) is required for Gitea act_runner in --non-interactive mode");
+            }
+            let t = Password::new()
+                .with_prompt(
+                    "Gitea Runner Registration Token (from Settings -> Actions -> Runners)",
+                )
+                .interact()?;
+            if t.trim().is_empty() {
+                bail!("Gitea runner token cannot be empty");
+            }
+            Ok((None, Some(t)))
+        }
     }
 }
 

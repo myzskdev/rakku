@@ -310,6 +310,7 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut MonitorState) {
 
                 Row::new(vec![
                     Cell::from(r.name.clone()),
+                    Cell::from(r.provider.to_string()).style(Style::default().fg(Color::Cyan)),
                     Cell::from(r.active_state.clone()).style(Style::default().fg(svc_color)),
                     Cell::from(r.job_state.to_string()).style(Style::default().fg(job_color)),
                     Cell::from(r.linux_user.clone()),
@@ -324,7 +325,8 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut MonitorState) {
             .collect();
 
         let header_row = Row::new([
-            "NAME", "SERVICE", "JOB", "USER", "VER", "CPU", "MEM", "UPTIME", "RST", "TARGET",
+            "NAME", "PROVIDER", "SERVICE", "JOB", "USER", "VER", "CPU", "MEM", "UPTIME", "RST",
+            "TARGET",
         ])
         .style(
             Style::default()
@@ -333,16 +335,17 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut MonitorState) {
         );
 
         let widths = [
-            Constraint::Length(18),
+            Constraint::Length(16),
+            Constraint::Length(9),
             Constraint::Length(10),
-            Constraint::Length(22),
-            Constraint::Length(12),
+            Constraint::Length(20),
+            Constraint::Length(10),
             Constraint::Length(8),
             Constraint::Length(7),
             Constraint::Length(10),
             Constraint::Length(9),
             Constraint::Length(4),
-            Constraint::Min(20),
+            Constraint::Min(18),
         ];
 
         let table = Table::new(rows, widths)
