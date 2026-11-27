@@ -298,7 +298,7 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut MonitorState) {
                     JobState::Running(_) => Color::Magenta,
                     JobState::Idle => Color::Green,
                     JobState::Starting => Color::Yellow,
-                    JobState::Offline => Color::Red,
+                    JobState::Error(_) | JobState::Offline => Color::Red,
                     JobState::Unknown => Color::DarkGray,
                 };
                 let cpu = r

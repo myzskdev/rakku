@@ -11,6 +11,7 @@ pub enum JobState {
     Idle,
     Running(String),
     Starting,
+    Error(String),
     Offline,
     Unknown,
 }
@@ -21,6 +22,7 @@ impl std::fmt::Display for JobState {
             JobState::Idle => write!(f, "Idle"),
             JobState::Running(job) => write!(f, "Running: {job}"),
             JobState::Starting => write!(f, "Starting"),
+            JobState::Error(msg) => write!(f, "Error: {msg}"),
             JobState::Offline => write!(f, "Offline"),
             JobState::Unknown => write!(f, "Unknown"),
         }
@@ -80,9 +82,15 @@ pub fn collect_runner_status(record: &RunnerRecord) -> RunnerLiveStatus {
     }
 }
 
-/// Infer whether the GitHub Actions runner is idle or actively executing a job from recent logs.
+/// Infer whether the GitHub Actions runner is idle, busy, or encountering connect errors.
 pub fn infer_job_state_from_logs(lines: &[String]) -> JobState {
     for line in lines.iter().rev() {
+        if line.contains("A session for this runner already exists") {
+            return JobState::Error("Session conflict".into());
+        }
+        if line.contains("Runner connect error:") {
+            return JobState::Error("Connect error".into());
+        }
         if let Some(pos) = line.find("Running job:") {
             let job = line[pos + "Running job:".len()..].trim();
             return JobState::Running(if job.is_empty() {

@@ -37,7 +37,7 @@ WorkingDirectory={workdir}\n\
 ExecStart={run_sh_str}\n\
 Restart=always\n\
 RestartSec=5\n\
-KillMode=process\n\
+KillMode=control-group\n\
 KillSignal=SIGTERM\n\
 TimeoutStopSec=5min\n\
 Environment=HOME=/home/{user}\n\
