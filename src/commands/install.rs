@@ -8,7 +8,7 @@ use dialoguer::{Confirm, Input, Password, Select};
 use crate::cli::InstallArgs;
 use crate::config::{self, APP_NAME};
 use crate::github::{current_runner_arch, GitHubClient, GitHubTarget};
-use crate::state::{RunnerRecord, StateStore};
+use crate::state::{ContainerRuntime, RunnerRecord, StateStore};
 use crate::system::{self, preflight, systemd, user};
 
 /// Automatically cleans up partial runner files and systemd units if installation fails mid-way.
@@ -133,26 +133,47 @@ pub fn run(args: InstallArgs) -> Result<()> {
         args.user
     };
 
-    let docker_access = if interactive && !args.docker {
-        Confirm::new()
-            .with_prompt(format!(
-                "Grant `{linux_user}` access to the `docker` group?"
-            ))
-            .default(false)
+    let runtime = if let Some(r) = args.runtime {
+        r.into()
+    } else if args.docker {
+        ContainerRuntime::Docker
+    } else if interactive {
+        let choices = &[
+            "None   (bare-metal / host deployments only)",
+            "Docker (adds user to `docker` group; installs Docker if missing)",
+            "Podman (rootless containers, native on RHEL/Rocky/Fedora; enables user linger)",
+        ];
+        let default_idx = if system::command_exists("podman") && !system::command_exists("docker") {
+            2
+        } else if system::command_exists("docker") {
+            1
+        } else {
+            0
+        };
+        match Select::new()
+            .with_prompt("Container runtime for CI jobs")
+            .items(choices)
+            .default(default_idx)
             .interact()?
+        {
+            1 => ContainerRuntime::Docker,
+            2 => ContainerRuntime::Podman,
+            _ => ContainerRuntime::None,
+        }
     } else {
-        args.docker
+        ContainerRuntime::None
     };
 
-    // Ensure optional/recommended server prerequisites (git, docker) are present or installed.
+    // Ensure optional/recommended server prerequisites (git, docker/podman) are present or installed.
     ensure_prerequisites(
         preflight_report.pm,
-        docker_access,
+        runtime,
         args.install_missing,
         !args.non_interactive,
     )?;
 
     let sudo_access = args.sudo;
+    let docker_access = runtime == ContainerRuntime::Docker;
     let install_dir = config::runner_install_dir(Some(&args.install_root), &name);
     let service_name = config::systemd_service_name(&name);
     let dir_existed_before = install_dir.exists();
@@ -167,8 +188,8 @@ pub fn run(args: InstallArgs) -> Result<()> {
         (None, None) => unreachable!("auth resolution guarantees either PAT or manual token"),
     };
 
-    println!("[2/7] Ensuring Linux user `{linux_user}` and permissions...");
-    user::ensure_linux_user(&linux_user, docker_access, sudo_access)?;
+    println!("[2/7] Ensuring Linux user `{linux_user}` and permissions (runtime: {runtime})...");
+    user::ensure_linux_user(&linux_user, runtime, sudo_access)?;
 
     let mut guard = RollbackGuard::new();
     if !dir_existed_before {
@@ -239,6 +260,7 @@ pub fn run(args: InstallArgs) -> Result<()> {
         labels,
         runner_group: args.runner_group,
         linux_user: linux_user.clone(),
+        container_runtime: runtime,
         docker_access,
         sudo_access,
         install_dir: install_dir.clone(),
@@ -273,7 +295,7 @@ pub fn run(args: InstallArgs) -> Result<()> {
 
 fn ensure_prerequisites(
     pm: preflight::PackageManager,
-    docker_requested: bool,
+    runtime: ContainerRuntime,
     auto_install: bool,
     allow_prompt: bool,
 ) -> Result<()> {
@@ -299,24 +321,55 @@ fn ensure_prerequisites(
         }
     }
 
-    if docker_requested && !system::command_exists("docker") {
-        let should_install = if auto_install {
-            true
-        } else if allow_prompt {
-            Confirm::new()
-                .with_prompt("Docker was requested but is not installed. Install Docker now?")
-                .default(true)
-                .interact()?
-        } else {
-            bail!(
-                "`--docker` was requested, but Docker is not installed. Re-run with `--install-missing` or run `{}` first.",
-                pm.install_hint(pm.docker_package_name())
-            );
-        };
+    match runtime {
+        ContainerRuntime::None => {}
+        ContainerRuntime::Docker => {
+            if !system::command_exists("docker") {
+                let should_install = if auto_install {
+                    true
+                } else if allow_prompt {
+                    Confirm::new()
+                        .with_prompt(
+                            "Docker runtime selected, but Docker is not installed. Install Docker now?",
+                        )
+                        .default(true)
+                        .interact()?
+                } else {
+                    bail!(
+                        "Docker runtime was requested, but Docker is not installed. Re-run with `--install-missing` or run `{}` first.",
+                        pm.install_hint(pm.docker_package_name())
+                    );
+                };
 
-        if should_install {
-            println!("Installing Docker...");
-            preflight::install_docker(pm)?;
+                if should_install {
+                    println!("Installing Docker...");
+                    preflight::install_docker(pm)?;
+                }
+            }
+        }
+        ContainerRuntime::Podman => {
+            if !system::command_exists("podman") {
+                let should_install = if auto_install {
+                    true
+                } else if allow_prompt {
+                    Confirm::new()
+                        .with_prompt(
+                            "Podman runtime selected, but Podman is not installed. Install Podman now?",
+                        )
+                        .default(true)
+                        .interact()?
+                } else {
+                    bail!(
+                        "Podman runtime was requested, but Podman is not installed. Re-run with `--install-missing` or run `{}` first.",
+                        pm.install_hint("podman")
+                    );
+                };
+
+                if should_install {
+                    println!("Installing Podman...");
+                    preflight::install_podman(pm)?;
+                }
+            }
         }
     }
 

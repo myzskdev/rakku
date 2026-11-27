@@ -5,10 +5,15 @@ use std::process::Command;
 use anyhow::{bail, Context, Result};
 
 use crate::config::SERVICE_PREFIX;
-use crate::system::run_checked;
+use crate::state::ContainerRuntime;
+use crate::system::{command_exists, run_checked};
 
-/// Ensure the dedicated Linux runner user exists and has the requested group/sudo permissions.
-pub fn ensure_linux_user(username: &str, docker_access: bool, sudo_access: bool) -> Result<()> {
+/// Ensure the dedicated Linux runner user exists and has the requested runtime/sudo permissions.
+pub fn ensure_linux_user(
+    username: &str,
+    runtime: ContainerRuntime,
+    sudo_access: bool,
+) -> Result<()> {
     validate_username(username)?;
 
     if !user_exists(username) {
@@ -16,14 +21,27 @@ pub fn ensure_linux_user(username: &str, docker_access: bool, sudo_access: bool)
             .with_context(|| format!("failed to create Linux user `{username}`"))?;
     }
 
-    if docker_access {
-        if group_exists("docker") {
-            run_checked("usermod", &["-aG", "docker", username])
-                .with_context(|| format!("failed to add `{username}` to `docker` group"))?;
-        } else {
-            eprintln!(
-                "warning: `--docker` requested, but `docker` group does not exist yet on this host"
-            );
+    match runtime {
+        ContainerRuntime::None => {}
+        ContainerRuntime::Docker => {
+            if group_exists("docker") {
+                run_checked("usermod", &["-aG", "docker", username])
+                    .with_context(|| format!("failed to add `{username}` to `docker` group"))?;
+            } else {
+                eprintln!(
+                    "warning: Docker runtime selected, but `docker` group does not exist yet on this host"
+                );
+            }
+        }
+        ContainerRuntime::Podman => {
+            // Enable systemd user lingering so rootless Podman works cleanly inside the runner service.
+            if command_exists("loginctl") {
+                if let Err(err) = run_checked("loginctl", &["enable-linger", username]) {
+                    eprintln!(
+                        "warning: failed to enable systemd linger for `{username}` ({err}); rootless Podman may require manual `loginctl enable-linger {username}`"
+                    );
+                }
+            }
         }
     }
 

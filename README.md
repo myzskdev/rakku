@@ -7,9 +7,9 @@
 ## Features
 
 - **One-command Linux runner setup (`install`):**
-  - Preflight host checks + optional auto-install of missing prerequisites (`git`, `docker`)
+  - Preflight host checks + optional auto-install of missing prerequisites (`git`, `docker`, `podman`)
   - Creates a dedicated non-root Linux user (default: `rakku`)
-  - Optionally grants `docker` group access (or passwordless `sudo` when explicitly requested)
+  - Container runtime selector (`none`, `docker`, or `podman` with rootless `systemd` linger) + optional `sudo` access
   - Auto-detects CPU architecture (`x64` / `arm64`), downloads the latest `actions/runner` tarball, verifies SHA-256, and installs OS dependencies (`./bin/installdependencies.sh`)
   - Supports **GitHub PAT** (auto-mints registration & removal tokens via API) or **manual registration tokens**
   - Supports **repository**, **organization**, and **enterprise** runners

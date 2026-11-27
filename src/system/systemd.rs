@@ -238,6 +238,7 @@ mod tests {
             labels: vec!["vps".into()],
             runner_group: None,
             linux_user: "rakku".into(),
+            container_runtime: crate::state::ContainerRuntime::Docker,
             docker_access: true,
             sudo_access: false,
             install_dir: PathBuf::from("/opt/rakku/runners/vps-01"),

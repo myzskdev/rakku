@@ -1,6 +1,24 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use crate::config::{APP_NAME, DEFAULT_INSTALL_ROOT, DEFAULT_RUNNER_USER};
+use crate::state::ContainerRuntime;
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum RuntimeArg {
+    None,
+    Docker,
+    Podman,
+}
+
+impl From<RuntimeArg> for ContainerRuntime {
+    fn from(value: RuntimeArg) -> Self {
+        match value {
+            RuntimeArg::None => ContainerRuntime::None,
+            RuntimeArg::Docker => ContainerRuntime::Docker,
+            RuntimeArg::Podman => ContainerRuntime::Podman,
+        }
+    }
+}
 
 #[derive(Debug, Parser)]
 #[command(
@@ -89,7 +107,11 @@ pub struct InstallArgs {
     #[arg(long, default_value = DEFAULT_INSTALL_ROOT)]
     pub install_root: String,
 
-    /// Add the runner Linux user to the `docker` group
+    /// Container runtime for CI jobs (none, docker, or podman)
+    #[arg(long, value_enum)]
+    pub runtime: Option<RuntimeArg>,
+
+    /// Shorthand for `--runtime docker` (add the runner Linux user to the `docker` group)
     #[arg(long)]
     pub docker: bool,
 

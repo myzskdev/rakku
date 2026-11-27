@@ -36,8 +36,8 @@ pub fn run(args: RunnerTargetArgs) -> Result<()> {
     );
     println!("Restarts:      {}", live.restarts);
     println!(
-        "Linux User:    {} (docker={}, sudo={})",
-        rec.linux_user, rec.docker_access, rec.sudo_access
+        "Linux User:    {} (runtime={}, sudo={})",
+        rec.linux_user, rec.container_runtime, rec.sudo_access
     );
     println!(
         "Labels:        {}",

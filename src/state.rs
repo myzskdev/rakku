@@ -25,6 +25,25 @@ impl std::fmt::Display for RunnerScope {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ContainerRuntime {
+    #[default]
+    None,
+    Docker,
+    Podman,
+}
+
+impl std::fmt::Display for ContainerRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ContainerRuntime::None => write!(f, "none"),
+            ContainerRuntime::Docker => write!(f, "docker"),
+            ContainerRuntime::Podman => write!(f, "podman"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunnerRecord {
     pub name: String,
@@ -33,6 +52,9 @@ pub struct RunnerRecord {
     pub labels: Vec<String>,
     pub runner_group: Option<String>,
     pub linux_user: String,
+    #[serde(default)]
+    pub container_runtime: ContainerRuntime,
+    #[serde(default)]
     pub docker_access: bool,
     pub sudo_access: bool,
     pub install_dir: PathBuf,
@@ -128,6 +150,7 @@ mod tests {
             labels: vec!["linux".into(), "vps".into()],
             runner_group: None,
             linux_user: "rakku".into(),
+            container_runtime: ContainerRuntime::Docker,
             docker_access: true,
             sudo_access: false,
             install_dir: PathBuf::from(format!("/opt/rakku/runners/{name}")),
