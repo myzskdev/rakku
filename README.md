@@ -34,15 +34,16 @@ curl -fsSL https://raw.githubusercontent.com/myzskdev/rakku/main/install.sh | su
 rakku doctor
 ```
 
-### Interactive install wizard
+### Interactive setup wizard *(aliases: `install`, `setup`, `init`, `add`)*
 ```bash
-sudo rakku install
+sudo rakku setup
 ```
+Enter your repo (`owner/repo` or full GitHub URL) and a PAT or manual token, then press **Enter** to accept sensible defaults for everything else.
 
 ### Non-interactive install (scripts / cloud-init / Terraform)
 ```bash
 sudo rakku install \
-  --url https://github.com/owner/repo \
+  --url owner/repo \
   --pat "$GITHUB_PAT" \
   --name vps-prod-01 \
   --labels linux,vps,docker \
