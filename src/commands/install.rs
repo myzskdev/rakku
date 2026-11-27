@@ -78,18 +78,21 @@ pub fn run(args: InstallArgs) -> Result<()> {
     let mut store = StateStore::load_default()?;
     let interactive = !args.non_interactive && args.url.is_none();
 
-    let url = match args.url {
+    if interactive {
+        println!("{APP_NAME} setup wizard — press Enter to accept defaults.\n");
+    }
+
+    let raw_url = match args.url {
         Some(u) => u,
         None if args.non_interactive => {
             bail!("--url is required when running with --non-interactive")
         }
         None => Input::<String>::new()
-            .with_prompt(
-                "GitHub Repository, Org, or Enterprise URL (e.g. https://github.com/owner/repo)",
-            )
+            .with_prompt("GitHub repo or org (e.g. owner/repo or https://github.com/my-org)")
             .interact_text()?,
     };
-    let target = GitHubTarget::parse(&url)?;
+    let target = GitHubTarget::parse(&raw_url)?;
+    let url = target.canonical_url();
 
     let default_name = suggest_runner_name(&store);
     let name = match args.name {

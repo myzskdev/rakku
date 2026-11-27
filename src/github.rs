@@ -19,9 +19,10 @@ pub enum GitHubTarget {
 }
 
 impl GitHubTarget {
-    /// Parse a GitHub URL into a repo, org, or enterprise target.
+    /// Parse a GitHub URL or `owner/repo` shorthand into a repo, org, or enterprise target.
     ///
     /// Examples:
+    /// - `owner/repo` -> Repo (`https://github.com/owner/repo`)
     /// - `https://github.com/owner/repo` -> Repo
     /// - `https://github.com/my-org` -> Org
     /// - `https://github.com/enterprises/my-ent` -> Enterprise
@@ -30,6 +31,24 @@ impl GitHubTarget {
             .trim()
             .trim_end_matches('/')
             .trim_end_matches(".git");
+        if trimmed.is_empty() {
+            bail!("GitHub URL or owner/repo cannot be empty");
+        }
+
+        // Allow convenient `owner/repo` shorthand without requiring `https://github.com/`.
+        if !trimmed.contains("://") {
+            let parts: Vec<&str> = trimmed.split('/').filter(|s| !s.is_empty()).collect();
+            if parts.len() == 2 && !parts[0].contains('.') {
+                return Ok(Self::Repo {
+                    owner: parts[0].to_string(),
+                    repo: parts[1].to_string(),
+                });
+            }
+            bail!(
+                "invalid GitHub target '{raw_url}': use `owner/repo` or a full URL like `https://github.com/owner/repo`"
+            );
+        }
+
         let after_scheme = trimmed
             .strip_prefix("https://")
             .or_else(|| trimmed.strip_prefix("http://"))
@@ -53,8 +72,19 @@ impl GitHubTarget {
                 repo: (*repo).to_string(),
             }),
             _ => bail!(
-                "unsupported GitHub URL format '{raw_url}'. Expected https://github.com/<org>, https://github.com/<owner>/<repo>, or https://github.com/enterprises/<slug>"
+                "unsupported GitHub URL format '{raw_url}'. Expected owner/repo, https://github.com/<org>, https://github.com/<owner>/<repo>, or https://github.com/enterprises/<slug>"
             ),
+        }
+    }
+
+    /// Return the canonical `https://github.com/...` URL for this target.
+    pub fn canonical_url(&self) -> String {
+        match self {
+            Self::Repo { owner, repo } => format!("https://github.com/{owner}/{repo}"),
+            Self::Org { org } => format!("https://github.com/{org}"),
+            Self::Enterprise { enterprise } => {
+                format!("https://github.com/enterprises/{enterprise}")
+            }
         }
     }
 
@@ -455,6 +485,18 @@ mod tests {
 
     #[test]
     fn parses_repo_org_and_enterprise_urls() {
+        let shorthand = GitHubTarget::parse("octocat/hello-world").unwrap();
+        assert_eq!(
+            shorthand,
+            GitHubTarget::Repo {
+                owner: "octocat".into(),
+                repo: "hello-world".into()
+            }
+        );
+        assert_eq!(
+            shorthand.canonical_url(),
+            "https://github.com/octocat/hello-world"
+        );
         assert_eq!(
             GitHubTarget::parse("https://github.com/octocat/hello-world.git").unwrap(),
             GitHubTarget::Repo {

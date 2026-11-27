@@ -1,6 +1,6 @@
 [package]
 name = "rakku"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Effortless Linux setup, lifecycle management, and local monitoring for GitHub Actions self-hosted runners (by fukulabs.dev)"
 homepage = "https://fukulabs.dev"

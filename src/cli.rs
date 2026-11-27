@@ -16,6 +16,7 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Install, register, and start a new GitHub Actions self-hosted runner
+    #[command(aliases = ["init", "setup", "add"])]
     Install(InstallArgs),
 
     /// List all locally managed runners and their live status
