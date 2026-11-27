@@ -34,6 +34,24 @@ pub fn run(args: RunnerTargetArgs) -> Result<()> {
             .unwrap_or_else(|| "-".into()),
         metrics::format_bytes(live.memory_bytes)
     );
+    println!("Disk Usage:    {}", metrics::format_bytes(live.disk_bytes));
+    if rec.memory_limit.is_some() || rec.cpu_quota.is_some() {
+        println!(
+            "Limits:        MemoryMax={}, CPUQuota={}",
+            rec.memory_limit.as_deref().unwrap_or("unlimited"),
+            rec.cpu_quota.as_deref().unwrap_or("unlimited")
+        );
+    }
+    if !rec.env_vars.is_empty() || rec.env_file.is_some() {
+        println!(
+            "Env Config:    {} var(s), env_file={}",
+            rec.env_vars.len(),
+            rec.env_file
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "-".into())
+        );
+    }
     println!("Restarts:      {}", live.restarts);
     println!(
         "Linux User:    {} (runtime={}, sudo={})",

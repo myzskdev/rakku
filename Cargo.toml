@@ -1,12 +1,14 @@
 [package]
 name = "rakku"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Effortless Linux setup, lifecycle management, and local monitoring for self-hosted CI runners: GitHub Actions, GitLab Runner, and Gitea Actions (by fukulabs.dev)"
 homepage = "https://fukulabs.dev"
 repository = "https://github.com/myzskdev/rakku"
 license = "MIT"
 readme = "README.md"
+keywords = ["github-actions", "gitlab-runner", "gitea", "ci", "devops"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 anyhow = "1"

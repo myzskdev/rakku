@@ -1,3 +1,4 @@
+pub mod clean;
 pub mod control;
 pub mod doctor;
 pub mod install;

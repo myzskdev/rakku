@@ -1,3 +1,5 @@
+use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 use serde::Serialize;
@@ -45,6 +47,7 @@ pub struct RunnerLiveStatus {
     pub pid: Option<u32>,
     pub restarts: u32,
     pub memory_bytes: Option<u64>,
+    pub disk_bytes: Option<u64>,
     pub cpu_percent: Option<f32>,
     pub uptime_secs: Option<u64>,
     pub job_state: JobState,
@@ -57,6 +60,10 @@ pub fn collect_runner_status(record: &RunnerRecord) -> RunnerLiveStatus {
     let memory_bytes = svc
         .memory_bytes
         .or_else(|| svc.main_pid.and_then(read_pid_rss_bytes));
+    let disk_bytes = record
+        .install_dir
+        .exists()
+        .then(|| dir_size_bytes(&record.install_dir));
 
     let job_state = if svc.active_state != "active" {
         JobState::Offline
@@ -79,6 +86,7 @@ pub fn collect_runner_status(record: &RunnerRecord) -> RunnerLiveStatus {
         pid: svc.main_pid,
         restarts: svc.restarts,
         memory_bytes,
+        disk_bytes,
         cpu_percent,
         uptime_secs: svc.uptime_secs,
         job_state,
@@ -139,6 +147,28 @@ fn read_pid_rss_bytes(pid: u32) -> Option<u64> {
         .parse::<u64>()
         .ok()?;
     Some(kb * 1024)
+}
+
+/// Compute total disk usage of a directory recursively (best-effort, skipping unreadable entries).
+pub fn dir_size_bytes(path: &Path) -> u64 {
+    let mut total = 0u64;
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    for entry in entries.flatten() {
+        let Ok(meta) = entry.metadata() else {
+            continue;
+        };
+        if meta.is_symlink() {
+            continue;
+        }
+        if meta.is_dir() {
+            total = total.saturating_add(dir_size_bytes(&entry.path()));
+        } else {
+            total = total.saturating_add(meta.len());
+        }
+    }
+    total
 }
 
 pub fn format_bytes(bytes: Option<u64>) -> String {

@@ -58,17 +58,29 @@ pub fn download_binary(requested_version: Option<&str>, dest_dir: &Path) -> Resu
         .call()
         .map_err(|e| anyhow!("failed to download GitLab Runner from {url}: {e}"))?;
 
+    let total_bytes = resp
+        .header("Content-Length")
+        .and_then(|v| v.parse::<u64>().ok());
     let mut reader = resp.into_reader();
     let mut out = File::create(&bin_path)
         .with_context(|| format!("failed to create {}", bin_path.display()))?;
     let mut buf = [0u8; 64 * 1024];
+    let mut downloaded: u64 = 0;
+    let mut last_print = std::time::Instant::now();
     loop {
         let n = reader.read(&mut buf)?;
         if n == 0 {
             break;
         }
         out.write_all(&buf[..n])?;
+        downloaded += n as u64;
+        if last_print.elapsed() >= std::time::Duration::from_millis(200) {
+            crate::github::print_download_progress(downloaded, total_bytes);
+            last_print = std::time::Instant::now();
+        }
     }
+    crate::github::print_download_progress(downloaded, total_bytes);
+    println!();
     out.flush()?;
     drop(out);
 

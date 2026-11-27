@@ -1,6 +1,21 @@
 # rakku *(楽駆)*
 
+[![CI](https://github.com/myzskdev/rakku/actions/workflows/ci.yml/badge.svg)](https://github.com/myzskdev/rakku/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/myzskdev/rakku)](https://github.com/myzskdev/rakku/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Built by fukulabs.dev](https://img.shields.io/badge/by-fukulabs.dev-black)](https://fukulabs.dev)
+
 > **Open-source** Rust CLI for effortless Linux setup, lifecycle management, and live local monitoring of self-hosted CI runners — **GitHub Actions**, **GitLab Runner**, and **Gitea Actions** — by [fukulabs.dev](https://fukulabs.dev).
+
+```text
+┌ rakku monitor | Total: 3  Active: 3  Busy: 1  Offline: 0 | Updated: 15:20:04 ─────────────────────┐
+│ NAME            PROVIDER SERVICE  JOB                  USER     CPU    MEM      DISK     UPTIME   │
+│ ▶ prod-api-01   github   active   Running: build-test  rakku    42.3%  148 MiB  1.2 GiB  4d 11h   │
+│   gl-worker-01  gitlab   active   Idle                 rakku     0.4%   52 MiB  412 MiB  4d 11h   │
+│   gt-edge-01    gitea    active   Idle                 rakku     0.2%   38 MiB  280 MiB  2d 03h   │
+└───────────────────────────────────────────────────────────────────────────────────────────────────┘
+ [↑/↓ or j/k] Select  [r] Restart  [s] Start/Stop  [l] Toggle Logs  [Space] Refresh  [q] Quit
+```
 
 `rakku` (*raku* 楽 = effortless + *ku* 駆 = run) is a free, open-source, zero-dependency static binary that automates the painful manual steps of running self-hosted CI runners on Linux VPSs, servers, and VMs:
 
@@ -81,6 +96,9 @@ sudo rakku install \
   --name vps-prod-01 \
   --labels linux,vps,docker \
   --runtime docker \
+  --memory-limit 4G \
+  --cpu-quota 200% \
+  --env HTTP_PROXY=http://proxy.internal:8080 \
   --install-missing \
   --non-interactive
 ```
@@ -127,6 +145,7 @@ sudo rakku install \
 | `rakku stop <name>` | Yes | Stop a running runner service |
 | `rakku restart <name>` | Yes | Restart a runner service |
 | `rakku upgrade <name\|--all>` | Yes | Safely upgrade idle runner binaries (`--force` to interrupt busy jobs) |
+| `rakku clean <name\|--all>` | Yes | Reclaim disk space from `_diag/` logs (`--work` also clears idle `_work/`/`builds/` caches) |
 | `rakku remove <name>` | Yes | Stop service, deregister from provider, and clean up files |
 | `rakku update` *(alias `self-update`)* | Yes | Update `rakku` itself to the latest GitHub Release (`--check` to inspect) |
 | `rakku doctor` | No | Run host diagnostics (`systemd`, tools, `git`, `docker`/`podman`, network) |

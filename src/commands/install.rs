@@ -185,6 +185,12 @@ pub fn run(args: InstallArgs) -> Result<()> {
         !args.non_interactive,
     )?;
 
+    for kv in &args.env_vars {
+        if !kv.contains('=') || kv.starts_with('=') {
+            bail!("invalid --env `{kv}`: expected `KEY=VALUE` format");
+        }
+    }
+
     let sudo_access = args.sudo;
     let docker_access = runtime == ContainerRuntime::Docker;
     let install_dir = config::runner_install_dir(Some(&args.install_root), &name);
@@ -313,6 +319,10 @@ pub fn run(args: InstallArgs) -> Result<()> {
         service_name: service_name.clone(),
         runner_version: installed_version,
         ephemeral: args.ephemeral,
+        memory_limit: args.memory_limit,
+        cpu_quota: args.cpu_quota,
+        env_vars: args.env_vars,
+        env_file: args.env_file.map(PathBuf::from),
         installed_at: Utc::now(),
         updated_at: None,
     };

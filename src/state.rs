@@ -84,6 +84,14 @@ pub struct RunnerRecord {
     pub service_name: String,
     pub runner_version: String,
     pub ephemeral: bool,
+    #[serde(default)]
+    pub memory_limit: Option<String>,
+    #[serde(default)]
+    pub cpu_quota: Option<String>,
+    #[serde(default)]
+    pub env_vars: Vec<String>,
+    #[serde(default)]
+    pub env_file: Option<PathBuf>,
     pub installed_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -181,6 +189,10 @@ mod tests {
             service_name: format!("rakku-{name}.service"),
             runner_version: "2.323.0".into(),
             ephemeral: false,
+            memory_limit: None,
+            cpu_quota: None,
+            env_vars: Vec::new(),
+            env_file: None,
             installed_at: Utc::now(),
             updated_at: None,
         }

@@ -23,6 +23,21 @@ pub fn render_unit_file(record: &RunnerRecord) -> String {
     let workdir = record.install_dir.to_string_lossy();
     let exec_start = crate::providers::exec_start_command(record);
 
+    let mut extra_service_lines = String::new();
+    if let Some(mem) = &record.memory_limit {
+        extra_service_lines.push_str(&format!("MemoryMax={mem}\n"));
+    }
+    if let Some(cpu) = &record.cpu_quota {
+        extra_service_lines.push_str(&format!("CPUQuota={cpu}\n"));
+    }
+    if let Some(env_file) = &record.env_file {
+        extra_service_lines.push_str(&format!("EnvironmentFile={}\n", env_file.to_string_lossy()));
+    }
+    for kv in &record.env_vars {
+        let escaped = kv.replace('"', "\\\"");
+        extra_service_lines.push_str(&format!("Environment=\"{escaped}\"\n"));
+    }
+
     format!(
         "[Unit]\n\
 Description=CI Runner ({name} / {provider}) [managed by {app}]\n\
@@ -40,6 +55,7 @@ KillMode=control-group\n\
 KillSignal=SIGTERM\n\
 TimeoutStopSec=5min\n\
 Environment=HOME=/home/{user}\n\
+{extra_service_lines}\
 \n\
 [Install]\n\
 WantedBy=multi-user.target\n",
@@ -246,6 +262,10 @@ mod tests {
             service_name: "rakku-vps-01.service".into(),
             runner_version: "2.323.0".into(),
             ephemeral: false,
+            memory_limit: Some("4G".into()),
+            cpu_quota: Some("200%".into()),
+            env_vars: vec!["HTTP_PROXY=http://proxy.local:8080".into()],
+            env_file: Some(PathBuf::from("/etc/rakku/vps-01.env")),
             installed_at: Utc::now(),
             updated_at: None,
         };
@@ -254,6 +274,10 @@ mod tests {
         assert!(unit.contains("WorkingDirectory=/opt/rakku/runners/vps-01"));
         assert!(unit.contains("Runner.Listener run --startuptype service"));
         assert!(unit.contains("KillMode=control-group"));
+        assert!(unit.contains("MemoryMax=4G"));
+        assert!(unit.contains("CPUQuota=200%"));
+        assert!(unit.contains("EnvironmentFile=/etc/rakku/vps-01.env"));
+        assert!(unit.contains("Environment=\"HTTP_PROXY=http://proxy.local:8080\""));
         assert!(unit.contains("Restart=always"));
         assert!(unit.contains("WantedBy=multi-user.target"));
     }

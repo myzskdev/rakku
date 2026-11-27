@@ -15,7 +15,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Install(args) => commands::install::run(args),
+        Commands::Install(args) => commands::install::run(*args),
         Commands::List(args) => commands::list::run(args),
         Commands::Monitor(args) => commands::monitor::run(args),
         Commands::Status(args) => commands::status::run(args),
@@ -26,6 +26,7 @@ fn main() -> Result<()> {
         Commands::Remove(args) => commands::remove::run(args),
         Commands::Update(args) => commands::self_update::run(args),
         Commands::Upgrade(args) => commands::update::run(args),
+        Commands::Clean(args) => commands::clean::run(args),
         Commands::Doctor => commands::doctor::run(),
     }
 }

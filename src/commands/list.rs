@@ -26,8 +26,8 @@ pub fn run(args: ListArgs) -> Result<()> {
     }
 
     println!(
-        "{:<16} {:<9} {:<10} {:<20} {:<10} {:<8} {:<7} {:<10} {:<9} TARGET",
-        "NAME", "PROVIDER", "SERVICE", "JOB", "USER", "VERSION", "CPU%", "MEM", "UPTIME"
+        "{:<16} {:<8} {:<9} {:<20} {:<10} {:<7} {:<9} {:<9} {:<8} TARGET",
+        "NAME", "PROVIDER", "SERVICE", "JOB", "USER", "CPU%", "MEM", "DISK", "UPTIME"
     );
     println!("{}", "-".repeat(126));
 
@@ -37,18 +37,19 @@ pub fn run(args: ListArgs) -> Result<()> {
             .map(|c| format!("{c:.1}%"))
             .unwrap_or_else(|| "-".into());
         let mem = metrics::format_bytes(st.memory_bytes);
+        let disk = metrics::format_bytes(st.disk_bytes);
         let uptime = metrics::format_uptime(st.uptime_secs);
         let job = truncate(&st.job_state.to_string(), 20);
         println!(
-            "{:<16} {:<9} {:<10} {:<20} {:<10} {:<8} {:<7} {:<10} {:<9} {}",
+            "{:<16} {:<8} {:<9} {:<20} {:<10} {:<7} {:<9} {:<9} {:<8} {}",
             truncate(&st.name, 16),
             st.provider,
-            truncate(&st.active_state, 10),
+            truncate(&st.active_state, 9),
             job,
             truncate(&st.linux_user, 10),
-            truncate(&st.runner_version, 8),
             cpu,
             mem,
+            disk,
             uptime,
             st.url
         );

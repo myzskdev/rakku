@@ -306,6 +306,7 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut MonitorState) {
                     .map(|c| format!("{c:.1}%"))
                     .unwrap_or_else(|| "-".into());
                 let mem = metrics::format_bytes(r.memory_bytes);
+                let disk = metrics::format_bytes(r.disk_bytes);
                 let up = metrics::format_uptime(r.uptime_secs);
 
                 Row::new(vec![
@@ -314,9 +315,9 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut MonitorState) {
                     Cell::from(r.active_state.clone()).style(Style::default().fg(svc_color)),
                     Cell::from(r.job_state.to_string()).style(Style::default().fg(job_color)),
                     Cell::from(r.linux_user.clone()),
-                    Cell::from(r.runner_version.clone()),
                     Cell::from(cpu),
                     Cell::from(mem),
+                    Cell::from(disk),
                     Cell::from(up),
                     Cell::from(r.restarts.to_string()),
                     Cell::from(r.url.clone()),
@@ -325,7 +326,7 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut MonitorState) {
             .collect();
 
         let header_row = Row::new([
-            "NAME", "PROVIDER", "SERVICE", "JOB", "USER", "VER", "CPU", "MEM", "UPTIME", "RST",
+            "NAME", "PROVIDER", "SERVICE", "JOB", "USER", "CPU", "MEM", "DISK", "UPTIME", "RST",
             "TARGET",
         ])
         .style(
@@ -336,14 +337,14 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &mut MonitorState) {
 
         let widths = [
             Constraint::Length(16),
+            Constraint::Length(8),
             Constraint::Length(9),
-            Constraint::Length(10),
             Constraint::Length(20),
             Constraint::Length(10),
-            Constraint::Length(8),
             Constraint::Length(7),
-            Constraint::Length(10),
             Constraint::Length(9),
+            Constraint::Length(9),
+            Constraint::Length(8),
             Constraint::Length(4),
             Constraint::Min(18),
         ];

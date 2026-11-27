@@ -52,7 +52,7 @@ pub struct Cli {
 pub enum Commands {
     /// Install, register, and start a new self-hosted CI runner
     #[command(aliases = ["init", "setup", "add"])]
-    Install(InstallArgs),
+    Install(Box<InstallArgs>),
 
     /// List all locally managed runners and their live status
     List(ListArgs),
@@ -84,6 +84,9 @@ pub enum Commands {
 
     /// Upgrade one or all managed runners to the latest upstream runner release
     Upgrade(UpdateArgs),
+
+    /// Clean runner diagnostic logs and optional stale build workspaces to reclaim disk space
+    Clean(CleanArgs),
 
     /// Check host readiness (systemd, Linux tools, git, docker, GitHub API)
     Doctor,
@@ -146,6 +149,22 @@ pub struct InstallArgs {
     /// Grant passwordless sudo to the runner user (use with caution)
     #[arg(long)]
     pub sudo: bool,
+
+    /// Optional systemd MemoryMax limit (e.g. 2G, 4096M)
+    #[arg(long)]
+    pub memory_limit: Option<String>,
+
+    /// Optional systemd CPUQuota limit (e.g. 200%, 50%)
+    #[arg(long)]
+    pub cpu_quota: Option<String>,
+
+    /// Custom environment variable injected into the systemd unit (repeatable: --env KEY=VAL)
+    #[arg(long = "env", value_name = "KEY=VAL")]
+    pub env_vars: Vec<String>,
+
+    /// Path to a systemd EnvironmentFile loaded by the runner service
+    #[arg(long)]
+    pub env_file: Option<String>,
 
     /// Specific actions/runner version to install (e.g. 2.323.0). Defaults to latest.
     #[arg(long)]
@@ -259,4 +278,22 @@ pub struct SelfUpdateArgs {
     /// Check for a newer version without replacing the binary
     #[arg(long)]
     pub check: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct CleanArgs {
+    /// Name of a specific runner to clean
+    pub name: Option<String>,
+
+    /// Clean all locally managed runners
+    #[arg(long)]
+    pub all: bool,
+
+    /// Also clean build workspaces (`_work/` or `builds/`) in addition to diagnostic logs
+    #[arg(long)]
+    pub work: bool,
+
+    /// Clean even if a runner is currently executing a job (use with caution)
+    #[arg(long)]
+    pub force: bool,
 }

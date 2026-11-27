@@ -281,12 +281,17 @@ impl GitHubClient {
             .call()
             .map_err(|e| map_ureq_error(e, &release.download_url))?;
 
+        let total_bytes = resp
+            .header("Content-Length")
+            .and_then(|v| v.parse::<u64>().ok());
         let mut reader = resp.into_reader();
         let mut out = File::create(archive_path)
             .with_context(|| format!("failed to create {}", archive_path.display()))?;
 
         let mut hasher = Sha256::new();
         let mut buf = [0u8; 64 * 1024];
+        let mut downloaded: u64 = 0;
+        let mut last_print = std::time::Instant::now();
         loop {
             let n = reader.read(&mut buf)?;
             if n == 0 {
@@ -294,7 +299,14 @@ impl GitHubClient {
             }
             out.write_all(&buf[..n])?;
             hasher.update(&buf[..n]);
+            downloaded += n as u64;
+            if last_print.elapsed() >= std::time::Duration::from_millis(200) {
+                print_download_progress(downloaded, total_bytes);
+                last_print = std::time::Instant::now();
+            }
         }
+        print_download_progress(downloaded, total_bytes);
+        println!();
         out.flush()?;
         drop(out);
 
@@ -474,6 +486,22 @@ pub fn map_ureq_error(err: ureq::Error, url: &str) -> anyhow::Error {
             "Network error reaching {url}: {t}. Check internet connectivity, DNS, and firewall rules."
         ),
     }
+}
+
+/// Print a lightweight inline download progress line (`\r`) without extra dependencies.
+pub fn print_download_progress(downloaded: u64, total: Option<u64>) {
+    let dl_mb = downloaded as f64 / (1024.0 * 1024.0);
+    match total {
+        Some(t) if t > 0 => {
+            let total_mb = t as f64 / (1024.0 * 1024.0);
+            let pct = ((downloaded as f64 / t as f64) * 100.0).min(100.0);
+            print!("\r      Progress: {dl_mb:.1} / {total_mb:.1} MiB ({pct:.0}%)   ");
+        }
+        _ => {
+            print!("\r      Progress: {dl_mb:.1} MiB   ");
+        }
+    }
+    let _ = io::stdout().flush();
 }
 
 #[allow(dead_code)]
