@@ -54,5 +54,11 @@ chmod 0755 "${TMP_DIR}/${APP_NAME}"
 mkdir -p "$INSTALL_DIR"
 mv "${TMP_DIR}/${APP_NAME}" "${INSTALL_DIR}/${APP_NAME}"
 
+# On RHEL/Rocky/Alma/CentOS, sudo's secure_path omits /usr/local/bin.
+# Symlink into /usr/bin so `sudo rakku` works out of the box on all distros.
+if [ "$INSTALL_DIR" = "/usr/local/bin" ] && [ -d "/usr/bin" ] && [ -w "/usr/bin" ]; then
+  ln -sf "${INSTALL_DIR}/${APP_NAME}" "/usr/bin/${APP_NAME}"
+fi
+
 echo "Installed ${APP_NAME} to ${INSTALL_DIR}/${APP_NAME}"
-echo "Run 'sudo ${APP_NAME} install' to set up your first GitHub Actions runner."
+echo "Run 'sudo ${APP_NAME} setup' to set up your first GitHub Actions runner."
