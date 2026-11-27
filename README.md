@@ -19,7 +19,7 @@
   - Real-time terminal dashboard (TUI) for every runner installed by `rakku`
   - Displays `systemd` state, live job activity (`Idle` / `Running: <job>`), PID, CPU %, RAM, uptime, restart count, and live `journalctl` logs
   - Built-in hotkeys to `restart` (`r`), `start/stop` (`s`), toggle logs (`l`), or refresh (`Space`)
-- **Full lifecycle management:** `list` (with `--json`), `status`, `logs`, `start`, `stop`, `restart`, `update` (skips busy runners, downloads once before stopping), `self-update`, `doctor`, and clean `remove` (deregisters from GitHub so no ghost offline runners remain)
+- **Full lifecycle management:** `list` (with `--json`), `status`, `logs`, `start`, `stop`, `restart`, `upgrade` (upgrades `actions/runner`, skips busy runners, downloads once before stopping), `update` (updates `rakku` itself), `doctor`, and clean `remove` (deregisters from GitHub so no ghost offline runners remain)
 
 ## Quick Install (Linux VPS)
 
@@ -63,8 +63,8 @@ rakku list --json          # Machine-readable JSON
 rakku status vps-prod-01   # Detailed status + recent logs
 rakku logs vps-prod-01 -f  # Follow journalctl logs
 sudo rakku restart vps-prod-01
-sudo rakku update --all    # Upgrade all idle local runners to latest actions/runner
-sudo rakku self-update     # Update rakku itself from GitHub Releases
+sudo rakku update          # Update rakku itself from GitHub Releases
+sudo rakku upgrade --all   # Upgrade all idle local runners to latest actions/runner
 sudo rakku remove vps-prod-01 --pat "$GITHUB_PAT"
 ```
 

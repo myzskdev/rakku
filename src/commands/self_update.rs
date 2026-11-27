@@ -29,7 +29,7 @@ pub fn run(args: SelfUpdateArgs) -> Result<()> {
 
     println!("Found v{} ({}).", release.version, release.asset_name);
     if args.check {
-        println!("Run `{APP_NAME} self-update` to install it.");
+        println!("Run `sudo {APP_NAME} update` to install it.");
         return Ok(());
     }
 

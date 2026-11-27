@@ -23,8 +23,8 @@ fn main() -> Result<()> {
         Commands::Stop(args) => commands::control::run(args, "stop"),
         Commands::Restart(args) => commands::control::run(args, "restart"),
         Commands::Remove(args) => commands::remove::run(args),
-        Commands::Update(args) => commands::update::run(args),
-        Commands::SelfUpdate(args) => commands::self_update::run(args),
+        Commands::Update(args) => commands::self_update::run(args),
+        Commands::Upgrade(args) => commands::update::run(args),
         Commands::Doctor => commands::doctor::run(),
     }
 }

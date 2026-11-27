@@ -42,11 +42,12 @@ pub enum Commands {
     /// Stop, deregister from GitHub, and remove a runner
     Remove(RemoveArgs),
 
-    /// Update one or all runners to the latest actions/runner release
-    Update(UpdateArgs),
+    /// Update rakku itself to the latest GitHub Release
+    #[command(alias = "self-update")]
+    Update(SelfUpdateArgs),
 
-    /// Update this CLI binary itself to the latest GitHub Release
-    SelfUpdate(SelfUpdateArgs),
+    /// Upgrade one or all managed runners to the latest actions/runner release
+    Upgrade(UpdateArgs),
 
     /// Check host readiness (systemd, Linux tools, git, docker, GitHub API)
     Doctor,
