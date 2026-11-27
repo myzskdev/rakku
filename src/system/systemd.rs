@@ -21,8 +21,8 @@ pub struct ServiceStatus {
 /// Generate a systemd unit file for a managed GitHub Actions runner.
 pub fn render_unit_file(record: &RunnerRecord) -> String {
     let workdir = record.install_dir.to_string_lossy();
-    let run_sh = record.install_dir.join("run.sh");
-    let run_sh_str = run_sh.to_string_lossy();
+    let listener = record.install_dir.join("bin").join("Runner.Listener");
+    let listener_str = listener.to_string_lossy();
 
     format!(
         "[Unit]\n\
@@ -34,7 +34,7 @@ Wants=network-online.target\n\
 Type=simple\n\
 User={user}\n\
 WorkingDirectory={workdir}\n\
-ExecStart={run_sh_str}\n\
+ExecStart={listener_str} run --startuptype service\n\
 Restart=always\n\
 RestartSec=5\n\
 KillMode=control-group\n\
@@ -251,6 +251,8 @@ mod tests {
         let unit = render_unit_file(&rec);
         assert!(unit.contains("User=rakku"));
         assert!(unit.contains("WorkingDirectory=/opt/rakku/runners/vps-01"));
+        assert!(unit.contains("Runner.Listener run --startuptype service"));
+        assert!(unit.contains("KillMode=control-group"));
         assert!(unit.contains("Restart=always"));
         assert!(unit.contains("WantedBy=multi-user.target"));
     }
